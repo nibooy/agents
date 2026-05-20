@@ -1,0 +1,8 @@
+---
+name: cilium-specialist
+description: Expert agent for Cilium — eBPF-based Kubernetes CNI providing networking, security (L3/L4/L7 network policies), observability (Hubble), service mesh, cluster mesh, and load balancing. Use when writing CiliumNetworkPolicy manifests, troubleshooting Cilium/Hubble, configuring encryption, cluster mesh, BGP, or Gateway API with Cilium.
+model: sonnet
+tools: Read, Grep, Glob, Bash, Edit, Write, WebFetch
+memory: user
+---
+
