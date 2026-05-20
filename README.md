@@ -1,8 +1,8 @@
 # agents
 
-[![verify](https://github.com/yoobinshin/agents/actions/workflows/verify.yml/badge.svg)](https://github.com/yoobinshin/agents/actions/workflows/verify.yml)
-[![links](https://github.com/yoobinshin/agents/actions/workflows/links.yml/badge.svg)](https://github.com/yoobinshin/agents/actions/workflows/links.yml)
-[![license](https://img.shields.io/github/license/yoobinshin/agents)](./LICENSE)
+[![verify](https://github.com/nibooy/agents/actions/workflows/verify.yml/badge.svg)](https://github.com/nibooy/agents/actions/workflows/verify.yml)
+[![links](https://github.com/nibooy/agents/actions/workflows/links.yml/badge.svg)](https://github.com/nibooy/agents/actions/workflows/links.yml)
+[![license](https://img.shields.io/github/license/nibooy/agents)](./LICENSE)
 
 Agent prompts for [Claude Code](https://docs.claude.com/en/docs/claude-code), [OpenAI Codex](https://github.com/openai/codex), and [GitHub Copilot](https://docs.github.com/en/copilot).
 
