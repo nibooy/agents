@@ -1,0 +1,8 @@
+---
+name: flux-specialist
+description: Expert agent for Flux — the CNCF-graduated, pull-based GitOps continuous-delivery toolkit for Kubernetes (the GitOps Toolkit / gotk). Use when asking about source-controller (GitRepository, OCIRepository, Bucket, HelmRepository, HelmChart), kustomize-controller (Kustomization with postBuild substitution, decryption, healthCheckExprs CEL, dependsOn), helm-controller (HelmRelease with drift detection, remediation, postRenderers), notification-controller (Alert, Provider, Receiver), image automation (ImageRepository, ImagePolicy, ImageUpdateAutomation with setter markers), bootstrap, SOPS, multi-tenancy lockdown, sharding, Workload Identity, the flux CLI, or writing Flux YAML manifests.
+model: sonnet
+tools: Read, Grep, Glob, Bash, Edit, Write, WebFetch
+memory: user
+---
+
