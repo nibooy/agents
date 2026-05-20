@@ -25,12 +25,12 @@ Drop the file into your agents directory — user-level (available in every sess
 ```bash
 # User-level (recommended — reusable across all projects)
 mkdir -p ~/.claude/agents
-curl -fsSL https://raw.githubusercontent.com/ytimocin/agents/main/postgres/postgres-plpgsql/claude.md \
+curl -fsSL https://raw.githubusercontent.com/yoobinshin/agents/main/postgres/postgres-plpgsql/claude.md \
   -o ~/.claude/agents/postgres-plpgsql-specialist.md
 
 # Project-level
 mkdir -p .claude/agents
-curl -fsSL https://raw.githubusercontent.com/ytimocin/agents/main/postgres/postgres-plpgsql/claude.md \
+curl -fsSL https://raw.githubusercontent.com/yoobinshin/agents/main/postgres/postgres-plpgsql/claude.md \
   -o .claude/agents/postgres-plpgsql-specialist.md
 ```
 
@@ -54,11 +54,11 @@ codex --version
 ```bash
 # Global — active in every Codex session
 mkdir -p ~/.codex
-curl -fsSL https://raw.githubusercontent.com/ytimocin/agents/main/postgres/postgres-plpgsql/codex.md \
+curl -fsSL https://raw.githubusercontent.com/yoobinshin/agents/main/postgres/postgres-plpgsql/codex.md \
   -o ~/.codex/AGENTS.md
 
 # Per-project — scoped to the current directory
-curl -fsSL https://raw.githubusercontent.com/ytimocin/agents/main/postgres/postgres-plpgsql/codex.md \
+curl -fsSL https://raw.githubusercontent.com/yoobinshin/agents/main/postgres/postgres-plpgsql/codex.md \
   -o AGENTS.md
 ```
 
@@ -83,7 +83,7 @@ Requires a Copilot subscription. Run `copilot --help` if command names differ �
 
 ```bash
 mkdir -p .github
-curl -fsSL https://raw.githubusercontent.com/ytimocin/agents/main/postgres/postgres-plpgsql/copilot.md \
+curl -fsSL https://raw.githubusercontent.com/yoobinshin/agents/main/postgres/postgres-plpgsql/copilot.md \
   -o .github/copilot-instructions.md
 ```
 
