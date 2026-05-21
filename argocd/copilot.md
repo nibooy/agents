@@ -8,7 +8,7 @@ Canonical sources:
 - Operator manual: https://argo-cd.readthedocs.io/en/stable/operator-manual/
 - Project repo: https://github.com/argoproj/argo-cd
 
-Last audited: 2026-04-14
+Last audited: 2026-05-20
 
 ---
 
@@ -43,6 +43,35 @@ Full docs: https://argo-cd.readthedocs.io/en/stable/operator-manual/architecture
 `v1alpha1` is the long-standing stable API despite the alpha label — it's what every production install uses. Don't expect a `v1` any time soon; the Argo project treats it as the de-facto GA.
 
 Full reference: https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/
+
+---
+
+## Installation
+
+Argo CD installs into a single namespace (default `argocd`) on a "hub" cluster. Pick a flavor based on scale and ownership boundary.
+
+| Method | Command | Notes |
+|--------|---------|-------|
+| **kubectl — non-HA** | `kubectl create namespace argocd && kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml` | Demo / dev. Single replica per component, single Redis |
+| **kubectl — HA** | `kubectl apply -n argocd -k https://github.com/argoproj/argo-cd/manifests/ha/?ref=stable` | Production. Multi-replica server / repo-server, Redis HA with sentinel |
+| **kubectl — namespace-scoped** | `…/manifests/namespace-install.yaml` (or `ha/namespace-install.yaml`) | Argo CD only watches its own namespace; no ClusterRoles |
+| **Helm chart** | `helm install argocd argo/argo-cd -n argocd --create-namespace` (chart at `argoproj/argo-helm`) | Community-maintained; the common production path |
+| **Argo CD Autopilot** | `argocd-autopilot repo bootstrap --repo …` | GitOps-installs Argo CD itself, then manages it from Git |
+| **Argo CD Core** | apply manifests then disable `argocd-server` / `argocd-dex-server` | Headless install — CLI hits CRDs directly via `--core`, no UI/API server |
+
+CRDs only (useful for some bootstrap orders):
+```bash
+kubectl apply --server-side --force-conflicts -k https://github.com/argoproj/argo-cd/manifests/crds?ref=stable
+```
+
+Default admin password after install:
+```bash
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
+```
+
+Delete that Secret after rotating — Argo CD will not regenerate it.
+
+Full docs: https://argo-cd.readthedocs.io/en/stable/operator-manual/installation/ · Helm chart: https://github.com/argoproj/argo-helm/tree/main/charts/argo-cd
 
 ---
 
@@ -238,6 +267,45 @@ spec:
 
 Full docs: https://argo-cd.readthedocs.io/en/stable/user-guide/multiple_sources/
 
+### Config Management Plugin (CMP)
+
+Custom rendering — anything that isn't Helm/Kustomize. Plugins run as **sidecars in `argocd-repo-server`**; the legacy `configManagementPlugins:` key in `argocd-cm` is deprecated.
+
+```yaml
+# 1. plugin.yaml mounted into the sidecar at /home/argocd/cmp-server/config/plugin.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: ConfigManagementPlugin
+metadata: {name: cdk8s}
+spec:
+  init:                                         # optional; runs once before generate
+    command: [sh, -c, "npm install"]
+  generate:                                     # required; must print YAML/JSON to stdout
+    command: [sh, -c, "cdk8s synth && cat dist/*.k8s.yaml"]
+  discover:                                     # auto-match this plugin to a repo path
+    fileName: "cdk8s.yaml"                      # OR find.glob / find.command
+  parameters:                                   # UI parameter exposure
+    static:
+      - {name: env, title: Environment}
+    dynamic:
+      command: [sh, -c, "echo '[{\"name\":\"region\"}]'"]
+```
+
+```yaml
+# 2. Application references the plugin
+spec:
+  source:
+    repoURL: https://github.com/org/app.git
+    path: .
+    plugin:
+      name: cdk8s
+      env:
+        - {name: env, value: prod}
+```
+
+Sidecar requirements: entrypoint `/var/run/argocd/argocd-cmp-server`, runs as UID 999, separate `/tmp` emptyDir so it doesn't clash with the main repo-server container.
+
+Full docs: https://argo-cd.readthedocs.io/en/stable/operator-manual/config-management-plugins/
+
 ---
 
 ## Sync
@@ -297,6 +365,33 @@ Hook delete policies:
 Typical pattern: migration Job in PreSync wave −1; application resources in Sync wave 0; smoke-test Job in PostSync wave 1.
 
 Full docs: https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/ · https://argo-cd.readthedocs.io/en/stable/user-guide/resource_hooks/
+
+### Sync Windows
+
+Time-based gates on an AppProject — independent from `syncPolicy.automated`. Windows gate both automated AND manual syncs unless `manualSync: true`.
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata: {name: prod, namespace: argocd}
+spec:
+  syncWindows:
+    - kind: allow                               # allow | deny
+      schedule: "0 9 * * 1-5"                   # cron syntax
+      duration: 8h
+      timeZone: America/New_York
+      applications: ["*"]
+      namespaces:   ["prod-*"]
+      clusters:     ["*"]
+      manualSync:   true                        # let humans/CI override via `argocd app sync`
+```
+
+Behavior:
+- Any **active** `deny` window blocks all syncs that match its app/namespace/cluster selectors.
+- If any `allow` windows exist on a project, syncs are blocked unless an active allow window matches (default-deny outside windows).
+- `manualSync: true` permits operator-driven syncs through the window while leaving automated sync blocked.
+
+Full docs: https://argo-cd.readthedocs.io/en/stable/user-guide/sync_windows/
 
 ---
 
@@ -397,6 +492,92 @@ Full docs: https://argo-cd.readthedocs.io/en/stable/user-guide/resource_tracking
 
 ---
 
+## SSO & User Management
+
+Argo CD ships with one bootstrap admin user; everything else is configured via `argocd-cm` + `argocd-secret`.
+
+### Local users
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: argocd-cm, namespace: argocd}
+data:
+  accounts.alice: "apiKey, login"               # capabilities (apiKey = tokens, login = UI)
+  accounts.alice.enabled: "true"
+  admin.enabled: "false"                        # disable bootstrap admin once named users exist
+```
+
+Manage with the CLI:
+```bash
+argocd account update-password --account alice --current-password <old> --new-password <new>
+argocd account generate-token --account alice            # API token for CI (capability: apiKey)
+argocd account list
+```
+
+Usernames cap at 32 chars.
+
+### SSO via Dex (built-in shim)
+
+For providers that aren't natively OIDC (GitHub, GitLab, SAML, LDAP, Microsoft, …) Dex translates to OIDC for Argo CD. Configure in `argocd-cm`:
+
+```yaml
+data:
+  url: https://argocd.example.com               # used for redirect URI; required
+  dex.config: |
+    connectors:
+      - type: github
+        id: github
+        name: GitHub
+        config:
+          clientID: <id>
+          clientSecret: $dex.github.clientSecret  # → argocd-secret
+          orgs:
+            - name: my-org
+              teams: [platform]
+```
+
+### Direct OIDC (no Dex)
+
+If your IdP speaks OIDC natively (Okta, Auth0, Google, Microsoft Entra, Keycloak), skip Dex:
+
+```yaml
+data:
+  url: https://argocd.example.com
+  oidc.config: |
+    name: Okta
+    issuer: https://acme.okta.com
+    clientID: <id>
+    clientSecret: $oidc.okta.clientSecret
+    requestedScopes: ["openid", "profile", "email", "groups"]
+    requestedIDTokenClaims: {"groups": {"essential": true}}
+    cliClientID: <cli-id>                        # optional; separate client for `argocd login --sso`
+    enablePKCEAuthentication: true               # recommended
+```
+
+Callback URL Argo CD registers: `https://<argocd-url>/auth/callback`.
+
+### Secrets
+
+`argocd-secret` (well-known name) holds anything `argocd-cm` references with `$<key>`:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata: {name: argocd-secret, namespace: argocd}
+stringData:
+  dex.github.clientSecret: "…"
+  oidc.okta.clientSecret: "…"
+```
+
+For a different Secret name, reference it as `$<secret-name>:<key>` and label that Secret `app.kubernetes.io/part-of: argocd`.
+
+Group → RBAC role mapping happens in `argocd-rbac-cm` via `g, <group>, <role>` lines (see RBAC below).
+
+Full docs: https://argo-cd.readthedocs.io/en/stable/operator-manual/user-management/
+
+---
+
 ## RBAC
 
 Policy syntax (Casbin):
@@ -443,6 +624,71 @@ Full docs: https://argo-cd.readthedocs.io/en/stable/operator-manual/rbac/
 
 ---
 
+## Notifications
+
+The Notifications controller emits events (Slack/Teams/Email/PagerDuty/webhook/Git commit status) when Applications change state. Configured via two ConfigMaps in the `argocd` namespace.
+
+### Config shape
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: argocd-notifications-cm, namespace: argocd}
+data:
+  # 1. Services — where to send
+  #    Supported: slack, email, teams, pagerduty, webhook, telegram, opsgenie, github, gitlab, …
+  service.slack: |
+    token: $slack-token
+  service.email.gmail: |
+    host: smtp.gmail.com
+    port: 465
+    from: deploys@example.com
+    username: $email-username
+    password: $email-password
+
+  # 2. Templates — message bodies (Go templates over .app / .context / etc.)
+  template.app-sync-succeeded: |
+    message: "{{.app.metadata.name}} synced to {{.app.status.operationState.syncResult.revision}}"
+    slack:
+      attachments: |
+        [{"color":"#18be52","fields":[{"title":"Sync","value":"{{.app.status.sync.status}}"}]}]
+
+  # 3. Triggers — when to fire (expression over the Application)
+  trigger.on-sync-succeeded: |
+    - when: app.status.operationState.phase in ['Succeeded']
+      send: [app-sync-succeeded]
+```
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata: {name: argocd-notifications-secret, namespace: argocd}
+stringData:
+  slack-token: xoxb-…
+  email-password: …
+```
+
+### Subscribing an Application
+
+Annotation format: `notifications.argoproj.io/subscribe.<trigger>.<service>: <destination>`.
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  annotations:
+    notifications.argoproj.io/subscribe.on-sync-succeeded.slack: "#deploys"
+    notifications.argoproj.io/subscribe.on-deployed.email.gmail: "team@example.com"
+```
+
+Multiple annotations stack. Project-level defaults live in `AppProject.metadata.annotations` and apply to every member app.
+
+Built-in triggers in the default catalog: `on-sync-succeeded`, `on-sync-failed`, `on-sync-running`, `on-sync-status-unknown`, `on-deployed`, `on-health-degraded`. Custom triggers go under `trigger.<name>` in `argocd-notifications-cm`.
+
+Full docs: https://argo-cd.readthedocs.io/en/stable/operator-manual/notifications/ · Triggers: https://argo-cd.readthedocs.io/en/stable/operator-manual/notifications/triggers/ · Services: https://argo-cd.readthedocs.io/en/stable/operator-manual/notifications/services/overview/
+
+---
+
 ## CLI quick reference
 
 Top-level commands you'll actually use:
@@ -465,6 +711,99 @@ Top-level commands you'll actually use:
 Commands talk to the API server (needs `--server` + auth) unless `--core` is passed, which lets them hit CRs directly (no Argo CD API server needed).
 
 Full docs: https://argo-cd.readthedocs.io/en/stable/user-guide/commands/argocd/
+
+---
+
+## High Availability & Sharding
+
+Use the `ha/install.yaml` manifest or the Helm chart with `redis-ha.enabled=true` for production. Component scaling matters more than the manifest you pick.
+
+### Component replicas
+
+| Component | Replicas | Notes |
+|---|---|---|
+| `argocd-server` | 3+ | Stateless; horizontal scale. Set env `ARGOCD_API_SERVER_REPLICAS` to match for graceful shutdown coordination |
+| `argocd-repo-server` | 2–3+ | Stateless; `--parallelismlimit` caps concurrent renders per replica (defaults vary — verify in your version). PVC-backed `/tmp` recommended for large monorepos |
+| `argocd-application-controller` | 1 by default; **shard** to scale | StatefulSet. Each replica owns a subset of registered clusters |
+| `argocd-redis-ha` | 3 + 3 sentinels | Set up by the `ha/` manifests / chart |
+| `argocd-dex-server` | 1 (stateless, cheap) | Only if Dex is in use |
+
+### Application controller sharding
+
+Multiple controller replicas, each owning a subset of clusters:
+
+```yaml
+# argocd-cmd-params-cm (or controller flags directly)
+data:
+  controller.sharding.algorithm: round-robin     # legacy | round-robin | consistent-hashing
+```
+
+```yaml
+# StatefulSet
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: argocd-application-controller
+          env:
+            - name: ARGOCD_CONTROLLER_REPLICAS
+              value: "3"                          # MUST match spec.replicas
+```
+
+`consistent-hashing` minimizes cluster-ownership churn when replicas scale; `round-robin` is simpler and works for stable cluster counts; `legacy` is the original SHA-based assignment.
+
+### Reconcile tuning
+
+| Knob | Purpose | Typical bump |
+|---|---|---|
+| `--status-processors` | Concurrent app status comparisons (controller) | 20 → 50 at ~1000 apps |
+| `--operation-processors` | Concurrent sync operations (controller) | 10 → 25 at ~1000 apps |
+| `--parallelismlimit` | Concurrent manifest generations (repo-server) | Tune to avoid OOM |
+| `timeout.reconciliation` | Polling cadence per app (default 3m) | Lower for tighter reconciliation; pair with a Git webhook |
+| `ARGOCD_EXEC_TIMEOUT` | Manifest gen timeout (default 90s) | Raise for slow CMPs / large charts |
+| `ARGOCD_GRPC_MAX_SIZE_MB` | gRPC payload cap (default 200) | Raise at 3000+ apps |
+
+### Monorepo annotation
+
+In a monorepo backing many Applications, the repo-server caches manifests per-revision; any commit invalidates the entire cache. Restrict invalidation scope per-App:
+
+```yaml
+metadata:
+  annotations:
+    argocd.argoproj.io/manifest-generate-paths: ".;../shared"   # invalidate only when these paths change
+```
+
+`;` separator, paths relative to `spec.source.path`. Huge cache-hit improvement on large repos.
+
+Full docs: https://argo-cd.readthedocs.io/en/stable/operator-manual/high_availability/
+
+---
+
+## Metrics
+
+Prometheus metrics on a per-component endpoint. ServiceMonitors are **not** included in the install manifests — bring your own (or use the Helm chart with `controller.metrics.enabled=true`, `server.metrics.enabled=true`, etc.).
+
+| Component | Port | Notable metrics |
+|---|---|---|
+| `argocd-application-controller` (`argocd-metrics` Service) | 8082 | `argocd_app_info{name,namespace,project,sync_status,health_status}` (gauge), `argocd_app_sync_total{phase}` (counter), `argocd_app_reconcile_bucket` (histogram), `argocd_cluster_info`, `argocd_cluster_connection_status`, `argocd_cluster_cache_age_seconds` |
+| `argocd-server` (`argocd-server-metrics`) | 8083 | `argocd_login_request_total`, `grpc_server_handled_total`, `argocd_proxy_extension_request_total` |
+| `argocd-repo-server` | 8084 | `argocd_git_request_duration_seconds` (histogram, by `request_type=ls-remote\|fetch`), `argocd_git_request_total`, `argocd_oci_request_total` |
+| `argocd-notifications-controller` | 9001 | Notification delivery counters (verify metric names against your version) |
+
+Useful PromQL:
+```promql
+# Apps not Healthy, grouped by project
+count by (project) (argocd_app_info{health_status!="Healthy"})
+
+# Sync failure rate
+rate(argocd_app_sync_total{phase="Failed"}[5m])
+
+# Repo-server p99 git latency
+histogram_quantile(0.99, sum by (le) (rate(argocd_git_request_duration_seconds_bucket[5m])))
+```
+
+Full docs: https://argo-cd.readthedocs.io/en/stable/operator-manual/metrics/
 
 ---
 
