@@ -363,13 +363,18 @@ k8sServicePort: <API_SERVER_PORT>
 | Feature | Description |
 |---------|-------------|
 | **Socket-level LB** (east-west) | Rewrites at the socket layer, avoiding per-packet NAT overhead |
-| **XDP acceleration** (north-south) | Processes packets at the NIC driver level before they enter the kernel networking stack |
-| **DSR** (Direct Server Return) | Response bypasses the LB node; reduces latency and load on the LB |
+| **XDP acceleration** (north-south) | Processes packets at the NIC driver level before they enter the kernel networking stack; `XDP_TX` bounces modified packets back out the same NIC, bypassing the host network stack entirely |
+| **DSR** (Direct Server Return) | Response bypasses the LB node; reduces latency and load on the LB. Operates in **passthrough mode** — the original client→backend TCP connection is preserved, so SSL cannot be terminated at the LB |
+| **SNAT / Hybrid** | Alternative to DSR; LB rewrites source IP so return traffic flows back through it. Use **proxy mode** (LB terminates the TCP connection and originates a fresh one to the backend) when you need L7 routing or SSL termination |
 | **Maglev** hashing | Consistent hashing for stable backend selection; minimizes disruption on backend changes |
 | **Session affinity** | `externalTrafficPolicy`, `internalTrafficPolicy`, client-IP affinity |
 | **NodePort / ExternalIP / LoadBalancer** | Full Service type support |
 
-Full docs: https://docs.cilium.io/en/stable/network/kubernetes/kubeproxy-free/ · Maglev: https://docs.cilium.io/en/stable/network/kubernetes/kubeproxy-free/#maglev-consistent-hashing
+### Standalone XDP L4 Load Balancer
+
+Cilium can also run as a **standalone XDP L4LB**, independent of Kubernetes — a high-performance edge / north-south LB programmed via the Cilium API rather than Services. Full IPv4 / IPv6 dual-stack; the packet path is the same `XDP → Maglev lookup → DSR or encap → XDP_TX` flow used by the in-cluster LB. Useful when you want Cilium's eBPF datapath at the cluster edge without running Kubernetes there.
+
+Full docs: https://docs.cilium.io/en/stable/network/kubernetes/kubeproxy-free/ · Maglev: https://docs.cilium.io/en/stable/network/kubernetes/kubeproxy-free/#maglev-consistent-hashing · Standalone XDP L4LB: https://cilium.io/blog/2022/04/12/cilium-standalone-L4LB-XDP/
 
 ---
 
@@ -510,6 +515,73 @@ Full docs: https://docs.cilium.io/en/stable/network/bgp-control-plane/
 
 ---
 
+## L2 Announcements
+
+On-prem alternative to BGP for advertising LoadBalancer / ExternalIP Service VIPs over the local L2 segment via ARP (IPv4) or NDP (IPv6). A leader node per service responds to address-resolution queries; on failover, leadership transfers via Kubernetes Leases. Use this for office / campus / home-lab networks where BGP isn't available.
+
+```yaml
+# Helm values
+l2announcements:
+  enabled: true
+  leaseDuration: 15s                        # default
+  leaseRenewDeadline: 5s                    # default
+  leaseRetryPeriod: 2s                      # default
+kubeProxyReplacement: true                  # REQUIRED — rides the kube-proxy-replacement datapath
+externalIPs:
+  enabled: true                             # needed to announce Service.spec.externalIPs (not just LoadBalancer IPs)
+k8sClientRateLimit:
+  qps:   50                                 # rough sizing: services × (1 / leaseRenewDeadline)
+  burst: 100
+```
+
+Configure via `CiliumL2AnnouncementPolicy`:
+
+```yaml
+apiVersion: cilium.io/v2alpha1
+kind: CiliumL2AnnouncementPolicy
+metadata: {name: lan-services}
+spec:
+  serviceSelector:
+    matchLabels: {announce: "true"}         # omit to select all services
+  nodeSelector:                             # which nodes are eligible to announce
+    matchExpressions:
+      - {key: node-role.kubernetes.io/control-plane, operator: DoesNotExist}
+  interfaces: ["^eth[0-9]+"]                # regex list of interfaces (optional)
+  externalIPs:     true                     # announce Service.spec.externalIPs
+  loadBalancerIPs: true                     # announce Service status.loadBalancer.ingress[].ip
+```
+
+Pair with a `CiliumLoadBalancerIPPool` to allocate the VIPs:
+
+```yaml
+apiVersion: cilium.io/v2alpha1
+kind: CiliumLoadBalancerIPPool
+metadata: {name: lan-pool}
+spec:
+  blocks:
+    - cidr: 192.168.1.240/28
+```
+
+| Behavior | Detail |
+|---|---|
+| Leader election | Kubernetes Lease per service; first node to claim wins. Failover window ≈ `leaseDuration ± leaseRenewDeadline` (≈10–20s with defaults) |
+| Gratuitous ARP | Leader sends gARP on failover for IPv4; not all clients honor it — expect brief connection blips |
+| Single ingress node per VIP | All ARP/NDP responses come from one node; no pre-cluster L4 distribution. eBPF then load-balances to backends in-cluster |
+| IPv6 | NDP responses supported; **unsolicited Neighbor Advertisement** on failover is not yet implemented |
+| Incompatibilities | Cannot combine with `externalTrafficPolicy: Local`; no IPv6 for L2 pod announcements |
+| L2 Pod Announcements | Separate feature exposing individual pod IPs directly on the LAN; niche — see upstream docs |
+
+**BGP vs L2 Announcements (quick chooser):**
+
+| You have | Use |
+|---|---|
+| ToR switch speaking BGP | **BGP** (`CiliumBGPPeeringPolicy`) — proper L3 advertisement, ECMP across nodes |
+| Flat LAN, no BGP | **L2 Announcements** (`CiliumL2AnnouncementPolicy`) — ARP/NDP only, single-node ingress per VIP |
+
+Full docs: https://docs.cilium.io/en/stable/network/l2-announcements/
+
+---
+
 ## Bandwidth Manager
 
 eBPF-based bandwidth management for fair queuing and rate limiting, replacing traditional tc-based shaping.
@@ -638,6 +710,7 @@ Full docs: https://docs.cilium.io/en/stable/operations/troubleshooting/
 | `CiliumIdentity` | `cilium.io/v2` | Cluster | Mapping of label sets to numeric identities |
 | `CiliumExternalWorkload` | `cilium.io/v2` | Cluster | Non-Kubernetes workloads managed by Cilium |
 | `CiliumBGPPeeringPolicy` | `cilium.io/v2alpha1` | Cluster | BGP peering configuration |
+| `CiliumL2AnnouncementPolicy` | `cilium.io/v2alpha1` | Cluster | ARP/NDP advertisement of Service VIPs on the local L2 segment |
 | `CiliumLoadBalancerIPPool` | `cilium.io/v2alpha1` | Cluster | IP pool for LoadBalancer Services |
 | `CiliumEnvoyConfig` | `cilium.io/v2` | Namespace | Custom Envoy listener/filter configuration |
 | `CiliumClusterwideEnvoyConfig` | `cilium.io/v2` | Cluster | Cluster-scoped Envoy configuration |
