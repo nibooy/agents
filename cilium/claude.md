@@ -703,7 +703,7 @@ cilium-bugtool
 cilium-dbg debuginfo -f debuginfo.md
 ```
 
-Full docs: https://docs.cilium.io/en/stable/operations/troubleshooting/troubleshooting/
+Full docs: https://docs.cilium.io/en/stable/operations/troubleshooting/
 
 ---
 
