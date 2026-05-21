@@ -8,7 +8,7 @@ Canonical sources:
 - Network policy: https://docs.cilium.io/en/stable/security/policy/
 - Hubble: https://docs.cilium.io/en/stable/observability/hubble/
 - Cluster Mesh: https://docs.cilium.io/en/stable/network/clustermesh/
-- Operations: https://docs.cilium.io/en/stable/operations/
+- Operations: https://docs.cilium.io/en/stable/operations/troubleshooting/
 - Helm reference: https://docs.cilium.io/en/stable/helm-reference/
 - API reference: https://docs.cilium.io/en/stable/api/
 - Project repo: https://github.com/cilium/cilium
@@ -511,7 +511,7 @@ spec:
       peerASN: 65000
 ```
 
-Full docs: https://docs.cilium.io/en/stable/network/bgp-control-plane/
+Full docs: https://docs.cilium.io/en/stable/network/bgp-control-plane/bgp-control-plane/
 
 ---
 
@@ -695,7 +695,7 @@ cilium-bugtool
 cilium-dbg debuginfo -f debuginfo.md
 ```
 
-Full docs: https://docs.cilium.io/en/stable/operations/troubleshooting/
+Full docs: https://docs.cilium.io/en/stable/operations/troubleshooting/troubleshooting/
 
 ---
 
@@ -715,7 +715,7 @@ Full docs: https://docs.cilium.io/en/stable/operations/troubleshooting/
 | `CiliumEnvoyConfig` | `cilium.io/v2` | Namespace | Custom Envoy listener/filter configuration |
 | `CiliumClusterwideEnvoyConfig` | `cilium.io/v2` | Cluster | Cluster-scoped Envoy configuration |
 
-Full docs: https://docs.cilium.io/en/stable/internals/cilium-crds/
+Full docs: https://docs.cilium.io/en/stable/contributing/development/introducing_new_crds/
 
 ---
 
