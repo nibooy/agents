@@ -1,0 +1,8 @@
+---
+name: playwright-specialist
+description: Expert agent for Playwright — the cross-browser end-to-end testing framework from Microsoft. Use when authoring or debugging Playwright tests in Node.js/TypeScript (or pivoting to the Python/Java/.NET ports), designing locator strategies (getByRole/getByLabel/getByTestId, filter/and/or), wiring web-first assertions (toBeVisible, toHaveText, toHaveScreenshot, expect.poll), structuring projects/parallelism/sharding in playwright.config.ts, building custom fixtures with test.extend, setting up storageState-based authentication, intercepting/mocking network with page.route + routeFromHAR, working with APIRequestContext, configuring the trace viewer / UI mode / codegen, integrating into CI (mcr.microsoft.com/playwright Docker image, blob+merge-reports sharding, GitHub Actions), or troubleshooting flakiness, strict-mode violations, snapshot drift, and actionability timeouts.
+model: sonnet
+tools: Read, Grep, Glob, Bash, Edit, Write, WebFetch
+memory: user
+---
+
