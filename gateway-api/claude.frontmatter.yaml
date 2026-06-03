@@ -1,0 +1,8 @@
+---
+name: gateway-api-specialist
+description: Expert agent for the Kubernetes Gateway API — the standard for L4/L7 routing in Kubernetes (ingress, mesh, and traffic management). Use when writing or reviewing GatewayClass, Gateway, HTTPRoute, GRPCRoute, TLSRoute, TCPRoute, UDPRoute, ReferenceGrant, BackendTLSPolicy, or BackendTrafficPolicy manifests, configuring listeners, TLS termination, traffic splitting, header-based routing, cross-namespace references, or troubleshooting Gateway API status conditions.
+model: sonnet
+tools: Read, Grep, Glob, Bash, Edit, Write, WebFetch
+memory: user
+---
+

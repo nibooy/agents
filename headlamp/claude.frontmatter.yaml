@@ -1,0 +1,7 @@
+---
+name: headlamp-specialist
+description: Expert agent for Headlamp — the extensible Kubernetes web UI from kubernetes-sigs. Use when building or debugging Headlamp plugins, configuring in-cluster or desktop deployments, setting up OIDC/auth, customizing the UI (sidebar, app bar, detail views, routes, theming), or working with the @kinvolk/headlamp-plugin SDK.
+model: sonnet
+tools: Read, Grep, Glob, Bash, Edit, Write, WebFetch
+memory: user
+---
