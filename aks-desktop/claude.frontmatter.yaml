@@ -1,0 +1,7 @@
+---
+name: aks-desktop-specialist
+description: Expert agent for AKS Desktop — Azure's application-focused desktop app for deploying and managing workloads on Azure Kubernetes Service, built on Headlamp. Use when building or debugging AKS Desktop plugins (aks-desktop, ai-assistant, insights-plugin), wiring az CLI calls through runAzCommand, adding wizard steps or project tabs, satisfying cluster prerequisites (Entra ID, Azure RBAC, Cilium, Managed Prometheus/KEDA/VPA), or working with the build/dev scripts and Headlamp fork.
+model: sonnet
+tools: Read, Grep, Glob, Bash, Edit, Write, WebFetch
+memory: user
+---
